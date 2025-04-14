@@ -53,10 +53,6 @@ struct hb_glyf_scratch_t
   contour_point_vector_t deltas;
   hb_vector_t<unsigned int> shared_indices;
   hb_vector_t<unsigned int> private_indices;
-
-  // VARC
-  hb_vector_t<unsigned> axisIndices;
-  hb_vector_t<float> axisValues;
 };
 
 namespace OT {
@@ -594,9 +590,9 @@ struct gvar_GVAR
       /* If sanitize failed, set glyphCount to 0. */
       glyphCount = table->version.to_int () ? face->get_num_glyphs () : 0;
 
-      /* For shared tuples that only have one axis active, shared the index of
-       * that axis as a cache. This will speed up caclulate_scalar() a lot
-       * for fonts with lots of axes and many "monovar" tuples. */
+      /* For shared tuples that only have one or two axes active, shared the index
+       * of that axis as a cache. This will speed up caclulate_scalar() a lot
+       * for fonts with lots of axes and many "monovar" or "duovar" tuples. */
       hb_array_t<const F2DOT14> shared_tuples = (table+table->sharedTuples).as_array (table->sharedTupleCount * table->axisCount);
       unsigned count = table->sharedTupleCount;
       if (unlikely (!shared_tuple_active_idx.resize (count, false))) return;
@@ -775,8 +771,8 @@ struct gvar_GVAR
 	      for (unsigned int i = phantom_only ? count - 4 : 0; i < count; i++)
 	      {
 		auto &delta = deltas.arrayZ[i];
-		delta.x += x_deltas.arrayZ[i] * scalar;
-		delta.y += y_deltas.arrayZ[i] * scalar;
+		delta.add_delta (x_deltas.arrayZ[i] * scalar,
+				 y_deltas.arrayZ[i] * scalar);
 	      }
 	    else
 	      for (unsigned int i = 0; i < num_deltas; i++)
@@ -786,8 +782,8 @@ struct gvar_GVAR
 		if (phantom_only && pt_index < count - 4) continue;
 		auto &delta = deltas.arrayZ[pt_index];
 		delta.flag = 1;	/* this point is referenced, i.e., explicit deltas specified */
-		delta.x += x_deltas.arrayZ[i] * scalar;
-		delta.y += y_deltas.arrayZ[i] * scalar;
+		delta.add_delta (x_deltas.arrayZ[i] * scalar,
+				 y_deltas.arrayZ[i] * scalar);
 	      }
 	  }
 	  else
@@ -796,8 +792,8 @@ struct gvar_GVAR
 	      for (unsigned int i = phantom_only ? count - 4 : 0; i < count; i++)
 	      {
 		auto &delta = deltas.arrayZ[i];
-		delta.x += x_deltas.arrayZ[i];
-		delta.y += y_deltas.arrayZ[i];
+		delta.add_delta (x_deltas.arrayZ[i],
+				 y_deltas.arrayZ[i]);
 	      }
 	    else
 	      for (unsigned int i = 0; i < num_deltas; i++)
@@ -807,8 +803,8 @@ struct gvar_GVAR
 		if (phantom_only && pt_index < count - 4) continue;
 		auto &delta = deltas.arrayZ[pt_index];
 		delta.flag = 1;	/* this point is referenced, i.e., explicit deltas specified */
-		delta.x += x_deltas.arrayZ[i];
-		delta.y += y_deltas.arrayZ[i];
+		delta.add_delta (x_deltas.arrayZ[i],
+				 y_deltas.arrayZ[i]);
 	      }
 	  }
 	}

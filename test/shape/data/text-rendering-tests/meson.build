@@ -1,10 +1,12 @@
-text_rendering_tests = [
+text_rendering_tests_tests = [
   'AVAR-1.tests',
   'CFF-1.tests',
   'CFF-2.tests',
+  'CFF-3.tests',
   'CFF2-1.tests',
   'CMAP-1.tests',
   'CMAP-2.tests',
+  'CMAP-4.tests',
   'CVAR-1.tests',
   'CVAR-2.tests',
   'GLYF-1.tests',
@@ -75,7 +77,7 @@ text_rendering_tests = [
   'SHKNDA-1.tests',
 ]
 
-disabled_text_rendering_tests = [
+disabled_text_rendering_tests_tests = [
   'CMAP-3.tests',
   'SHARAN-1.tests',
   'SHBALI-1.tests',

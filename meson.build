@@ -1,11 +1,12 @@
-project('harfbuzz', 'c', 'cpp',
-  meson_version: '>= 0.55.0',
-  version: '10.3.0',
+project('harfbuzz', ['c', 'cpp'],
+  meson_version: '>= 0.60.0',
+  version: '11.0.1',
   default_options: [
     'cpp_eh=none',          # Just to support msvc, we are passing -fno-exceptions also anyway
     # 'cpp_rtti=false',     # Do NOT enable, wraps inherit it and ICU needs RTTI
     'cpp_std=c++11',
     'wrap_mode=nofallback', # Use --wrap-mode=default to revert, https://github.com/harfbuzz/harfbuzz/pull/2548
+    'buildtype=debugoptimized',
   ],
 )
 
@@ -31,11 +32,16 @@ pkgmod = import('pkgconfig')
 cpp = meson.get_compiler('cpp')
 null_dep = dependency('', required: false)
 
+
+# Includes Microsoft Clang compiler with GNU arguments, see
+# https://github.com/harfbuzz/harfbuzz/pull/4394
+cpp_is_microsoft_compiler = host_machine.system() == 'windows' and cpp.get_define('_MSC_FULL_VER') != ''
+
 # Only perform these checks if cpp_std is c++11 as setting -std directly
 # produces a warning from meson.
 if get_option('cpp_std') == 'c++11'
   # Enforce C++14 requirement for MSVC STL
-  if cpp.get_id() == 'clang' and cpp.get_define('_MSC_FULL_VER') != ''
+  if cpp.get_id() == 'clang' and cpp_is_microsoft_compiler
     add_project_arguments('-std=c++14', language: 'cpp')
   elif cpp.get_id() == 'clang-cl'
     # Clang-cl produces a warning when using -std=c++14, but not when using /std:c++14
@@ -102,44 +108,36 @@ check_funcs = [
 
 m_dep = cpp.find_library('m', required: false)
 
-if meson.version().version_compare('>=0.60.0')
+# Painful hack to handle multiple dependencies but also respect options
+if get_option('freetype').disabled()
+  freetype_dep = dependency('', required: false)
+else
   # Sadly, FreeType's versioning schemes are different between pkg-config and CMake
-  # pkg-config: freetype2, cmake: Freetype
+
+  # Try pkg-config name
   freetype_dep = dependency('freetype2',
                             version: freetype_min_version,
                             method: 'pkg-config',
                             required: false,
                             allow_fallback: false)
   if not freetype_dep.found()
-    freetype_dep = dependency('FreeType',
+    # Try cmake name
+    freetype_dep = dependency('Freetype',
                               version: freetype_min_version_actual,
                               method: 'cmake',
-                              required: get_option('freetype'),
-                              default_options: ['harfbuzz=disabled'],
-                              allow_fallback: true)
-  endif
-else
-  # painful hack to handle multiple dependencies but also respect options
-  freetype_opt = get_option('freetype')
-  # we want to handle enabled manually after fallbacks, but also handle disabled normally
-  if freetype_opt.enabled()
-    freetype_opt = false
-  endif
-  # try pkg-config name
-  freetype_dep = dependency('freetype2', version: freetype_min_version, method: 'pkg-config', required: freetype_opt)
-  # when disabled, leave it not-found
-  if not freetype_dep.found() and not get_option('freetype').disabled()
-    # Try cmake name
-    freetype_dep = dependency('Freetype', version: freetype_min_version_actual, method: 'cmake', required: false)
-    # Subproject fallback, `allow_fallback: true` means the fallback will be
-    # tried even if the freetype option is set to `auto`.
+                              required: false,
+                              allow_fallback: false)
+    # Subproject fallback
     if not freetype_dep.found()
-      freetype_dep = dependency('freetype2',
-                                version: freetype_min_version,
-                                method: 'pkg-config',
+      freetype_proj = subproject('freetype2',
+                                version: freetype_min_version_actual,
                                 required: get_option('freetype'),
-                                default_options: ['harfbuzz=disabled'],
-                                allow_fallback: true)
+                                default_options: ['harfbuzz=disabled'])
+      if freetype_proj.found()
+        freetype_dep = freetype_proj.get_variable('freetype_dep')
+      else
+        freetype_dep = dependency('', required: false)
+      endif
     endif
   endif
 endif
@@ -152,38 +150,12 @@ wasm_dep = cpp.find_library('iwasm', required: get_option('wasm'))
 # How to check whether iwasm was built, and hence requires, LLVM?
 #llvm_dep = cpp.find_library('LLVM-15', required: get_option('wasm'))
 
-if meson.version().version_compare('>=0.60.0')
-  # pkg-config: icu-uc, cmake: ICU but with components
-  icu_dep = dependency('icu-uc', 'ICU',
-                            version: icu_min_version,
-                            components: 'uc',
-                            required: get_option('icu'),
-                            allow_fallback: true)
-else
-  # painful hack to handle multiple dependencies but also respect options
-  icu_opt = get_option('icu')
-  # we want to handle enabled manually after fallbacks, but also handle disabled normally
-  if icu_opt.enabled()
-    icu_opt = false
-  endif
-  # try pkg-config name
-  icu_dep = dependency('icu-uc', version: icu_min_version, method: 'pkg-config', required: icu_opt)
-  # when disabled, leave it not-found
-  if not icu_dep.found() and not get_option('icu').disabled()
-    # Try cmake name
-    icu_dep = dependency('ICU', version: icu_min_version, method: 'cmake', components: 'uc', required: false)
-    # Try again with subproject fallback. `allow_fallback: true` means the
-    # fallback will be tried even if the icu option is set to `auto`, but
-    # we cannot pass this option until Meson 0.59.0, because no wrap file
-    # is checked into git.
-    if not icu_dep.found()
-      icu_dep = dependency('icu-uc',
-                           version: icu_min_version,
-                           method: 'pkg-config',
-                           required: get_option('icu'))
-    endif
-  endif
-endif
+# pkg-config: icu-uc, cmake: ICU but with components
+icu_dep = dependency('icu-uc', 'ICU',
+                          version: icu_min_version,
+                          components: 'uc',
+                          required: get_option('icu'),
+                          allow_fallback: true)
 
 if icu_dep.found() and icu_dep.version().version_compare('>=75.1') and (get_option('cpp_std') == 'c++11' or get_option('cpp_std') == 'c++14')
   cpp17_arg = cpp.get_argument_syntax() == 'msvc' ? '/std:c++17' : '-std=c++17'
@@ -227,16 +199,18 @@ endif
 
 chafa_dep = dependency('chafa', version: chafa_min_version, required: get_option('chafa'))
 
+fontations_dep_found = false
+if get_option('fontations').enabled()
+  add_languages(['rust'], native: false, required : true)
+  fontations_dep_found = true
+endif
+
 conf = configuration_data()
 incconfig = include_directories('.')
 
 add_project_arguments('-DHAVE_CONFIG_H', language: ['c', 'cpp'])
 
-warn_cflags = [
-  '-Wno-non-virtual-dtor',
-]
-
-cpp_args = cpp.get_supported_arguments(warn_cflags)
+cpp_args = []
 
 if glib_dep.found()
   conf.set('HAVE_GLIB', 1)
@@ -270,6 +244,10 @@ endif
 
 if chafa_dep.found()
   conf.set('HAVE_CHAFA', 1)
+endif
+
+if fontations_dep_found
+  conf.set('HAVE_FONTATIONS', 1)
 endif
 
 if wasm_dep.found()
@@ -315,7 +293,7 @@ endif
 gdi_uniscribe_deps = []
 # GDI (Uniscribe) (Windows)
 if host_machine.system() == 'windows' and not get_option('gdi').disabled()
-  if (get_option('directwrite').enabled() and
+  if (get_option('gdi').enabled() and
       not (cpp.has_header('usp10.h') and cpp.has_header('windows.h')))
     error('GDI/Uniscribe was enabled explicitly, but required headers are missing.')
   endif
@@ -333,13 +311,16 @@ if host_machine.system() == 'windows' and not get_option('gdi').disabled()
   endif
 endif
 
+directwrite_dep = []
 # DirectWrite (Windows)
 if host_machine.system() == 'windows' and not get_option('directwrite').disabled()
-  if get_option('directwrite').enabled() and not cpp.has_header('dwrite_1.h')
+  if get_option('directwrite').enabled() and not cpp.has_header('dwrite_3.h')
     error('DirectWrite was enabled explicitly, but required header is missing.')
   endif
-
-  conf.set('HAVE_DIRECTWRITE', 1)
+  directwrite_dep = cpp.find_library('dwrite', required: get_option('directwrite'))
+  if directwrite_dep.found()
+    conf.set('HAVE_DIRECTWRITE', 1)
+  endif
 endif
 
 # CoreText (macOS)
@@ -464,12 +445,10 @@ configure_file(output: 'config.h', configuration: conf)
 alias_target('lib', libharfbuzz)
 alias_target('libs', libharfbuzz, libharfbuzz_subset)
 
-if meson.version().version_compare('>=0.57.0')
-  # Re glib, see https://github.com/harfbuzz/harfbuzz/issues/4153#issuecomment-2646347531
-  add_test_setup('default',
-                 exclude_suites: ['google-benchmark'],
-                 is_default: glib_dep.type_name() != 'internal' and not meson.is_subproject())
-endif
+# Re glib, see https://github.com/harfbuzz/harfbuzz/issues/4153#issuecomment-2646347531
+add_test_setup('default',
+                exclude_suites: ['google-benchmark'],
+                is_default: glib_dep.type_name() != 'internal' and not meson.is_subproject())
 
 build_summary = {
   'Directories':

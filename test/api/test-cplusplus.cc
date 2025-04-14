@@ -28,33 +28,12 @@
 /* This file tests that all headers can be included from C++ files,
  * as well as test the C++ API. */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
+#define NO_MAIN
+#include "test-c.c"
+#undef NO_MAIN
 
-#include <hb.h>
-#include <hb-subset.h>
-#include <hb-ot.h>
-#include <hb-aat.h>
-
-#ifdef HAVE_GLIB
-#include <hb-glib.h>
-#endif
-
-#ifdef HAVE_ICU
-#include <hb-icu.h>
-#endif
-
-#ifdef HAVE_FREETYPE
-#include <hb-ft.h>
-#endif
-
-#ifdef HAVE_UNISCRIBE
-#include <hb-uniscribe.h>
-#endif
-
-#ifdef HAVE_CORETEXT
-#include <hb-coretext.h>
+#ifdef HAVE_DIRECTWRITE
+#include <hb-directwrite.h>
 #endif
 
 
@@ -66,8 +45,8 @@
 #include <functional>
 #include <utility>
 
-int
-main ()
+static void
+test_smart_ptrs (void)
 {
   hb_buffer_t *b = hb_buffer_create ();
   hb::shared_ptr<hb_buffer_t> pb {b};
@@ -121,5 +100,16 @@ main ()
   assert (hash2 (pb4) == hash2 (pb2));
   assert (hash (b) == hash3 (pb5));
 
-  return pb == pb.get_empty () || pb == pb2;
+  g_assert_true (pb != pb.get_empty ());
+  g_assert_true (pb != pb2);
+}
+
+int
+main (int argc, char **argv)
+{
+  hb_test_init (&argc, &argv);
+
+  hb_test_add (test_smart_ptrs);
+
+  return hb_test_run ();
 }

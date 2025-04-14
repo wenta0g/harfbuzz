@@ -45,7 +45,6 @@ test_font (hb_font_t *font, hb_codepoint_t cp)
   char buf[5] = {0};
   unsigned int len = 0;
   hb_glyph_extents_t extents = {0, 0, 0, 0};
-  hb_ot_font_set_funcs (font);
 
   set = hb_set_create ();
   hb_face_collect_unicodes (face, set);
@@ -210,7 +209,7 @@ static void
 test_ot_var_axis_on_zero_named_instance (void)
 {
   hb_face_t *face = hb_test_open_font_file ("fonts/Zycon.ttf");
-  g_assert (hb_ot_var_get_axis_count (face));
+  g_assert_true (hb_ot_var_get_axis_count (face));
   hb_face_destroy (face);
 }
 
