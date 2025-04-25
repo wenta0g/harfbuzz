@@ -13,11 +13,14 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 {
   alloc_state = _fuzzing_alloc_state (data, size);
 
+	int const mode = data[0]%4;
+	data++,size--;
   hb_blob_t *blob = hb_blob_create ((const char *)data, size,
-				    HB_MEMORY_MODE_READONLY, nullptr, nullptr);
+				    mode, nullptr, nullptr);
   hb_face_t *face = hb_face_create (blob, 0);
   hb_font_t *font = hb_font_create (face);
   hb_font_set_scale (font, 12, 12);
+	hb_font_set_var_name_instance(font, 0xFFFFFFFF);
 
   unsigned num_coords = 0;
   if (size) num_coords = data[size - 1];
